@@ -4,39 +4,52 @@ import { createRoot } from 'react-dom/client';
 import { AlertTriangle, CheckCircle2, Calculator, Info } from 'lucide-react';
 import './styles.css';
 
+// Real OpenClaw defaults (from docs):
+//   contextTokens: 200000, keepRecentTokens: 50000, reserveTokensFloor: 24000
 const presets = {
   localSafe: {
-    name: 'Local safe default',
+    name: '65k budget / 7B-8B models',
     lmStudioContext: 65536,
     openClawContextTokens: 65536,
-    reserveTokens: 4096,
-    maxTokens: 2048,
-    keepRecentTokens: 3000,
-    estimatedPromptTokens: 54000,
+    reserveTokens: 8192,
+    maxTokens: 4096,
+    keepRecentTokens: 8000,
+    estimatedPromptTokens: 30000,
     compactionRatio: 0.55,
-    overheadTokens: 3000,
+    overheadTokens: 15000,
   },
   localTight: {
-    name: 'Risky / tight budget',
-    lmStudioContext: 61265,
-    openClawContextTokens: 61265,
-    reserveTokens: 16384,
+    name: 'Tight budget / squeeze tokens',
+    lmStudioContext: 48000,
+    openClawContextTokens: 48000,
+    reserveTokens: 6000,
     maxTokens: 2048,
-    keepRecentTokens: 4000,
-    estimatedPromptTokens: 54032,
-    compactionRatio: 0.55,
-    overheadTokens: 3000,
+    keepRecentTokens: 6000,
+    estimatedPromptTokens: 25000,
+    compactionRatio: 0.5,
+    overheadTokens: 12000,
   },
   cloudLarge: {
-    name: 'Large cloud-ish context',
+    name: '128k budget / 32B+ models',
     lmStudioContext: 128000,
     openClawContextTokens: 128000,
-    reserveTokens: 12000,
-    maxTokens: 4096,
-    keepRecentTokens: 12000,
+    reserveTokens: 16000,
+    maxTokens: 8192,
+    keepRecentTokens: 16000,
     estimatedPromptTokens: 60000,
     compactionRatio: 0.5,
-    overheadTokens: 5000,
+    overheadTokens: 20000,
+  },
+  openclawDefault: {
+    name: 'OpenClaw defaults (200k)',
+    lmStudioContext: 200000,
+    openClawContextTokens: 200000,
+    reserveTokens: 24000,
+    maxTokens: 8192,
+    keepRecentTokens: 50000,
+    estimatedPromptTokens: 80000,
+    compactionRatio: 0.55,
+    overheadTokens: 25000,
   },
 };
 
@@ -61,12 +74,12 @@ function autoFill(contextLength) {
   const ctx = n(contextLength);
   return {
     openClawContextTokens: ctx,
-    reserveTokens: clamp(Math.round(ctx * 0.06), 2048, Math.floor(ctx * 0.15)),
-    maxTokens: clamp(Math.round(ctx * 0.02), 1024, 8192),
-    keepRecentTokens: clamp(Math.round(ctx * 0.04), 1500, 12000),
+    reserveTokens: clamp(Math.round(ctx * 0.12), 4000, Math.floor(ctx * 0.15)),
+    maxTokens: clamp(Math.round(ctx * 0.04), 2048, 8192),
+    keepRecentTokens: clamp(Math.round(ctx * 0.08), 3000, 50000),
     compactionRatio: 0.55,
-    estimatedPromptTokens: Math.round(ctx * 0.75),
-    overheadTokens: clamp(Math.round(ctx * 0.04), 2000, 6000),
+    estimatedPromptTokens: Math.round(ctx * 0.65),
+    overheadTokens: clamp(Math.round(ctx * 0.15), 8000, 30000),
   };
 }
 
@@ -135,8 +148,8 @@ function calculate(form) {
     successRate = clamp(45 - (miss / Math.max(usablePromptBudget, 1)) * 100, 1, 45);
   }
 
-  const recommendedReserve = clamp(Math.ceil(n(form.maxTokens) * 2), 2048, Math.floor(runtimeLimit * 0.15));
-  const recommendedKeepRecent = clamp(Math.ceil(runtimeLimit * 0.05), 1500, 8000);
+  const recommendedReserve = clamp(Math.ceil(n(form.maxTokens) * 2), 4096, Math.floor(runtimeLimit * 0.12));
+  const recommendedKeepRecent = clamp(Math.ceil(runtimeLimit * 0.08), 3000, 50000);
   const safePromptTarget = Math.floor((runtimeLimit - recommendedReserve - n(form.overheadTokens)) * 0.85);
 
   let verdict = 'Safe';
@@ -255,9 +268,10 @@ function App() {
       </section>
 
       <section className="card preset-row">
-        <button onClick={() => { setAuto(false); setForm(presets.localSafe); }}>Local safe default</button>
-        <button onClick={() => { setAuto(false); setForm(presets.localTight); }}>Tight / risky budget</button>
-        <button onClick={() => { setAuto(false); setForm(presets.cloudLarge); }}>Large context preset</button>
+        <button onClick={() => { setAuto(false); setForm(presets.localSafe); }}>65k (7B-8B models)</button>
+        <button onClick={() => { setAuto(false); setForm(presets.localTight); }}>Tight budget</button>
+        <button onClick={() => { setAuto(false); setForm(presets.cloudLarge); }}>128k (32B+ models)</button>
+        <button onClick={() => { setAuto(false); setForm(presets.openclawDefault); }}>OpenClaw defaults</button>
       </section>
 
       <section className="grid">
@@ -293,7 +307,7 @@ function App() {
             min={512} max={65536} step={512}
             onChange={(v) => set('reserveTokens', v)}
             disabled={auto}
-            help={auto ? 'Auto-calculated (6% of context)' : 'Empty space kept for output/safety.'}
+            help={auto ? 'Auto-calculated (12% of context)' : 'Empty space kept for output/safety.'}
           />
           <Field
             label="Max output tokens"
@@ -301,7 +315,7 @@ function App() {
             min={128} max={32768} step={128}
             onChange={(v) => set('maxTokens', v)}
             disabled={auto}
-            help={auto ? 'Auto-calculated (2% of context)' : 'Your configured maxTokens.'}
+            help={auto ? 'Auto-calculated (4% of context)' : 'Your configured maxTokens.'}
           />
           <Field
             label="Estimated prompt / session tokens"
@@ -309,7 +323,7 @@ function App() {
             min={1024} max={256000} step={1024}
             onChange={(v) => set('estimatedPromptTokens', v)}
             disabled={auto}
-            help={auto ? 'Auto-estimated (75% of context)' : 'From OpenClaw logs, or use a rough estimate.'}
+            help={auto ? 'Auto-estimated (65% of context)' : 'From OpenClaw logs, or use a rough estimate.'}
           />
           <Field
             label="Keep recent tokens"
@@ -317,7 +331,7 @@ function App() {
             min={512} max={65536} step={512}
             onChange={(v) => set('keepRecentTokens', v)}
             disabled={auto}
-            help={auto ? 'Auto-calculated (4% of context)' : 'Recent transcript kept intact after compaction.'}
+            help={auto ? 'Auto-calculated (8% of context)' : 'Recent transcript kept intact after compaction.'}
           />
           <Field
             label="Compaction ratio (proxy)"
@@ -332,7 +346,7 @@ function App() {
             min={0} max={65536} step={512}
             onChange={(v) => set('overheadTokens', v)}
             disabled={auto}
-            help={auto ? 'Auto-calculated (4% of context)' : 'Estimate for injected instructions, tools, skills, memory.'}
+            help={auto ? 'Auto-calculated (16% of context)' : 'System prompt + tools + skills + memory. Real OpenClaw setups often hit 10k-15k+ tokens here.'}
           />
         </div>
 
